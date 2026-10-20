@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Reports - CyberAttend{% endblock %}
+{% block heading %}Attendance Reports{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>FILTER LOGS</h2>
+    <form method="GET" class="filters">
+        <div class="field">
+            <label>Date</label>
+            <input type="date" name="date" value="{{ selected_date or '' }}">
+        </div>
+        <div class="field">
+            <label>Department</label>
+            <select name="department_id">
+                <option value="">All Departments</option>
+                {% for d in departments %}
+                <option value="{{ d['id'] }}" {% if selected_dept==d['id'] %}selected{% endif %}>{{ d['name'] }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button class="btn small" type="submit">FILTER</button>
+        <a class="btn magenta small" style="text-align:center;" href="{{ url_for('reports') }}">RESET</a>
+    </form>
+</div>
+
+<div class="card" style="margin-top:20px;">
+    <h2>ATTENDANCE RECORDS ({{ logs|length }})</h2>
+    <table>
+        <thead><tr><th>Name</th><th>Department</th><th>Date</th><th>Time</th></tr></thead>
+        <tbody>
+            {% for log in logs %}
+            <tr>
+                <td>{{ log['name'] }}</td>
+                <td><span class="badge">{{ log['department_name'] }}</span></td>
+                <td>{{ log['date'] }}</td>
+                <td>{{ log['time'] }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" style="color:var(--text-dim)">No records found.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

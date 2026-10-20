@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - CyberAttend{% endblock %}
+{% block heading %}Overview{% endblock %}
+
+{% block content %}
+{% if pending and pending|length > 0 %}
+<div class="card" style="margin-bottom:20px; border-color: var(--neon-magenta);">
+    <h2 style="color: var(--neon-magenta);">⚠ PENDING APPROVALS ({{ pending|length }})</h2>
+    <table>
+        <thead><tr><th>Name</th><th>Department</th><th>Registered On</th><th></th></tr></thead>
+        <tbody>
+            {% for p in pending %}
+            <tr>
+                <td>{{ p['name'] }}</td>
+                <td><span class="badge gray">{{ p['department_name'] }}</span></td>
+                <td>{{ p['created_at'] }}</td>
+                <td>
+                    <form method="POST" action="{{ url_for('approve_employee', employee_id=p['id']) }}" style="display:inline;">
+                        <button class="btn small" type="submit">✔ APPROVE</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<div class="grid grid-4" style="margin-bottom:20px;">
+    <div class="card stat-card">
+        <div class="label">Total Employees</div>
+        <div class="value">{{ stats.total_employees }}</div>
+    </div>
+    <div class="card stat-card">
+        <div class="label">Departments</div>
+        <div class="value cyan">{{ stats.total_departments }}</div>
+    </div>
+    <div class="card stat-card">
+        <div class="label">Present Today</div>
+        <div class="value magenta">{{ stats.today_present }}</div>
+    </div>
+    <div class="card stat-card">
+        <div class="label">System Status</div>
+        <div class="value" style="font-size:18px;">🟢 ONLINE</div>
+    </div>
+</div>
+
+<div class="grid grid-2">
+    <div class="card">
+        <h2>DEPARTMENT-WISE ATTENDANCE (TODAY)</h2>
+        <canvas id="deptChart" height="120"></canvas>
+    </div>
+    <div class="card">
+        <h2>RECENT SCANS</h2>
+        <table>
+            <thead><tr><th>Name</th><th>Dept</th><th>Time</th></tr></thead>
+            <tbody>
+                {% for log in today_logs[:8] %}
+                <tr>
+                    <td>{{ log['name'] }}</td>
+                    <td><span class="badge">{{ log['department_name'] }}</span></td>
+                    <td>{{ log['time'] }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="3" style="color:var(--text-dim)">No scans yet today.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script>
+const labels = {{ stats.dept_counts | map(attribute='department_name') | list | tojson }};
+const data = {{ stats.dept_counts | map(attribute='present_count') | list | tojson }};
+
+new Chart(document.getElementById('deptChart'), {
+    type: 'bar',
+    data: {
+        labels: labels,
+        datasets: [{
+            label: 'Present',
+            data: data,
+            backgroundColor: 'rgba(0,255,157,0.5)',
+            borderColor: '#00ff9d',
+            borderWidth: 1,
+            borderRadius: 4
+        }]
+    },
+    options: {
+        plugins: { legend: { display: false } },
+        scales: {
+            x: { ticks: { color: '#7f93a3', font: {size: 9} }, grid: { color: 'rgba(255,255,255,0.03)' } },
+            y: { beginAtZero: true, ticks: { color: '#7f93a3', stepSize: 1 }, grid: { color: 'rgba(255,255,255,0.05)' } }
+        }
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>{% block title %}CyberAttend{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<div class="layout">
+    <div class="sidebar">
+        <div class="brand">CYBER<span>ATTEND</span></div>
+        <div class="nav-item {% if active=='dashboard' %}active{% endif %}" onclick="location.href='{{ url_for('dashboard') }}'">📊 Dashboard</div>
+        <div class="nav-item {% if active=='attendance' %}active{% endif %}" onclick="location.href='{{ url_for('attendance_page') }}'">🎥 Live Attendance</div>
+        <div class="nav-item {% if active=='register' %}active{% endif %}" onclick="location.href='{{ url_for('register') }}'">➕ Register Person</div>
+        <div class="nav-item {% if active=='employees' %}active{% endif %}" onclick="location.href='{{ url_for('employees') }}'">🗂 Employees</div>
+        <div class="nav-item {% if active=='reports' %}active{% endif %}" onclick="location.href='{{ url_for('reports') }}'">🧾 Reports</div>
+        <div class="nav-item" onclick="location.href='{{ url_for('logout') }}'">🔒 Logout</div>
+    </div>
+    <div class="main">
+        <div class="topbar">
+            <h1>{% block heading %}{% endblock %}</h1>
+            <div class="user-tag">ADMIN: {{ session.get('username','') }}</div>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, msg in messages %}
+                    <div class="flash {{ 'error' if category=='error' else '' }}">{{ msg }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+
+        <footer class="note">CyberAttend Face Recognition System &mdash; Admin Panel</footer>
+    </div>
+</div>
+{% block scripts %}{% endblock %}
+</body>
+</html>

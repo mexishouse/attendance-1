@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Register - CyberAttend{% endblock %}
+{% block heading %}Register New Person{% endblock %}
+
+{% block content %}
+<div class="card form-box">
+    <h2>STEP 1 — ENTER DETAILS</h2>
+    <form method="POST">
+        <div class="field">
+            <label>Full Name</label>
+            <input type="text" name="name" required placeholder="e.g. Ali Raza">
+        </div>
+        <div class="field">
+            <label>Department</label>
+            <select name="department_id" required>
+                <option value="" disabled selected>Select department</option>
+                {% for d in departments %}
+                <option value="{{ d['id'] }}">{{ d['name'] }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button class="btn" type="submit">▶ CONTINUE TO FACE CAPTURE</button>
+    </form>
+</div>
+
+<div class="card form-box" style="margin-top:20px;">
+    <h2>MANAGE DEPARTMENTS</h2>
+    <form method="POST" action="{{ url_for('add_department') }}" class="inline-form">
+        <input type="text" name="dept_name" placeholder="New department name">
+        <button class="btn magenta small" type="submit">+ ADD</button>
+    </form>
+</div>
+{% endblock %}

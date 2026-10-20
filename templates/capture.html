@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Capture Face - CyberAttend{% endblock %}
+{% block heading %}Face Capture — {{ employee['name'] }}{% endblock %}
+
+{% block content %}
+<div class="grid grid-2">
+    <div>
+        <div class="video-wrap">
+            <img src="{{ url_for('capture_feed', employee_id=employee['id']) }}" id="captureImg">
+        </div>
+        <div class="progress-bar-wrap">
+            <div class="progress-bar-fill" id="progFill"></div>
+        </div>
+        <p class="scan-note" id="progText">Look straight into the camera. Move your head slightly for best results.</p>
+    </div>
+    <div class="card">
+        <h2>INSTRUCTIONS</h2>
+        <p style="font-size:13px; color:#cfe9df; line-height:1.8;">
+            1. Make sure your face is well-lit and clearly visible.<br>
+            2. Stay within the camera frame.<br>
+            3. System will auto-capture {{ needed }} samples.<br>
+            4. Once done, click "Finish & Train Model" below.
+        </p>
+        <button class="btn" id="trainBtn" style="display:none;" onclick="finishTraining()">✔ FINISH & TRAIN MODEL</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Safe passing for JS parser inside templates
+const employeeId = Number("{{ employee['id'] }}");
+const needed = Number("{{ needed }}");
+
+const interval = setInterval(() => {
+    fetch(`/capture_status/${employeeId}`)
+        .then(r => r.json())
+        .then(data => {
+            const pct = Math.min(100, (data.count / needed) * 100);
+            document.getElementById('progFill').style.width = pct + '%';
+            document.getElementById('progText').innerText = `Captured ${data.count} / ${needed} samples...`;
+
+            if (data.done) {
+                clearInterval(interval);
+                document.getElementById('progText').innerText = 'Capture complete! Ready to train.';
+                document.getElementById('trainBtn').style.display = 'inline-block';
+            }
+        });
+}, 800);
+
+function finishTraining() {
+    document.getElementById('progText').innerText = 'Training model, please wait...';
+    fetch(`/train/${employeeId}`, { method: 'POST' })
+        .then(() => window.location.href = "{{ url_for('employees') }}");
+}
+</script>
+{% endblock %}

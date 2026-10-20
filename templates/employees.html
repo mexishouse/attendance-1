@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Employees - CyberAttend{% endblock %}
+{% block heading %}All Employees{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>REGISTERED PERSONNEL</h2>
+    <table>
+        <thead>
+            <tr><th>ID</th><th>Name</th><th>Department</th><th>Samples</th><th>Status</th><th>Added On</th><th></th></tr>
+        </thead>
+        <tbody>
+            {% for e in employees %}
+            <tr>
+                <td>#{{ '%03d'|format(e['id']) }}</td>
+                <td>{{ e['name'] }}</td>
+                <td><span class="badge">{{ e['department_name'] }}</span></td>
+                <td>{{ e['samples_captured'] }}</td>
+                <td>
+                    {% if not e['trained'] %}
+                        <span class="badge gray">NOT TRAINED</span>
+                    {% elif not e['approved'] %}
+                        <span class="badge" style="border-color: var(--neon-magenta); color: var(--neon-magenta);">PENDING APPROVAL</span>
+                    {% else %}
+                        <span class="badge">APPROVED ✔</span>
+                    {% endif %}
+                </td>
+                <td>{{ e['created_at'] }}</td>
+                <td>
+                    <form method="POST" action="{{ url_for('train', employee_id=e['id']) }}" style="display:inline;">
+                        <button class="btn small" type="submit" style="margin-right:6px;">TRAIN</button>
+                    </form>
+                    {% if e['trained'] and not e['approved'] %}
+                    <form method="POST" action="{{ url_for('approve_employee', employee_id=e['id']) }}" style="display:inline;">
+                        <button class="btn small" type="submit" style="margin-right:6px;">APPROVE</button>
+                    </form>
+                    {% elif e['approved'] %}
+                    <form method="POST" action="{{ url_for('revoke_employee', employee_id=e['id']) }}" style="display:inline;">
+                        <button class="btn magenta small" type="submit" style="margin-right:6px;">REVOKE</button>
+                    </form>
+                    {% endif %}
+                    <form method="POST" action="{{ url_for('delete_employee', employee_id=e['id']) }}" onsubmit="return confirm('Remove this employee?');" style="display:inline;">
+                        <button class="btn magenta small" type="submit">DELETE</button>
+                    </form>
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" style="color:var(--text-dim)">No employees registered yet.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

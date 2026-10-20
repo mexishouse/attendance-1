@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Login - CyberAttend</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<div class="login-wrap">
+    <canvas id="matrix"></canvas>
+    <div class="login-box">
+        <h1>CYBERATTEND</h1>
+        <p class="sub">FACE RECOGNITION ATTENDANCE // ADMIN ACCESS ONLY</p>
+
+        {% if error %}<div class="error-msg">{{ error }}</div>{% endif %}
+
+        <form method="POST">
+            <div class="field">
+                <label>Username</label>
+                <input type="text" name="username" autocomplete="off" required>
+            </div>
+            <div class="field">
+                <label>Password</label>
+                <input type="password" name="password" required>
+            </div>
+            <button class="btn" type="submit">▶ AUTHENTICATE</button>
+        </form>
+    </div>
+</div>
+
+<script>
+const canvas = document.getElementById('matrix');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+const chars = "01アイウエオカキクケコサシスセソタチツテト";
+const fontSize = 16;
+const columns = canvas.width / fontSize;
+const drops = Array(Math.floor(columns)).fill(1);
+
+function draw() {
+    ctx.fillStyle = "rgba(5, 7, 10, 0.08)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#00ff9d";
+    ctx.font = fontSize + "px monospace";
+    for (let i = 0; i < drops.length; i++) {
+        const text = chars[Math.floor(Math.random() * chars.length)];
+        ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+        if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) drops[i] = 0;
+        drops[i]++;
+    }
+}
+setInterval(draw, 40);
+window.addEventListener('resize', () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Live Attendance - CyberAttend{% endblock %}
+{% block heading %}Live Attendance Scanner{% endblock %}
+
+{% block content %}
+<div class="grid grid-2">
+    <div>
+        <div class="video-wrap">
+            <img src="{{ url_for('video_feed') }}">
+        </div>
+        <p class="scan-note">Green box = recognized &nbsp;|&nbsp; Red box = unknown face. Attendance auto-marks once per day per person.</p>
+    </div>
+    <div class="card">
+        <h2>TODAY'S LOG (LIVE)</h2>
+        <table id="logsTable">
+            <thead><tr><th>Name</th><th>Dept</th><th>Time</th></tr></thead>
+            <tbody id="logsBody"></tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function refreshLogs() {
+    fetch("{{ url_for('api_live_logs') }}")
+        .then(r => r.json())
+        .then(logs => {
+            const body = document.getElementById('logsBody');
+            body.innerHTML = '';
+            if (logs.length === 0) {
+                body.innerHTML = '<tr><td colspan="3" style="color:var(--text-dim)">No scans yet today.</td></tr>';
+            }
+            logs.forEach(log => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td>${log.name}</td><td><span class="badge">${log.department_name}</span></td><td>${log.time}</td>`;
+                body.appendChild(tr);
+            });
+        });
+}
+refreshLogs();
+setInterval(refreshLogs, 3000);
+</script>
+{% endblock %}
