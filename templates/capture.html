@@ -5,51 +5,131 @@
 {% block content %}
 <div class="grid grid-2">
     <div>
-        <div class="video-wrap">
-            <img src="{{ url_for('capture_feed', employee_id=employee['id']) }}" id="captureImg">
+        <div class="video-wrap" style="position: relative; text-align: center;">
+            <!-- Live video stream for HTTPS / Localhost -->
+            <video id="video" width="100%" autoplay playsinline style="border-radius: 8px; background: #000; display:none;"></video>
+            <canvas id="canvas" style="display:none;"></canvas>
+            
+            <!-- Mobile Camera Button Fallback (Works perfectly on HTTP local network) -->
+            <div id="fallbackContainer" style="padding: 30px 20px; background: #1a1a1a; border-radius: 8px; border: 2px dashed #00ff9b; text-align: center;">
+                <p style="color: #fff; margin-bottom: 15px; font-size: 14px;">Mobile Browser HTTP Mode Detected:<br>Click below to open your mobile camera directly:</p>
+                <input type="file" id="cameraInput" accept="image/*" capture="user" style="display: none;" onchange="handleImageUpload(event)">
+                <button type="button" class="btn" onclick="document.getElementById('cameraInput').click()" style="background: #00ff9b; color: #000; font-weight: bold; padding: 12px 24px; font-size: 16px; border-radius: 6px; cursor: pointer;">📷 Open Mobile Camera</button>
+            </div>
         </div>
-        <div class="progress-bar-wrap">
-            <div class="progress-bar-fill" id="progFill"></div>
+        
+        <div class="progress-bar-wrap mt-3" style="background: #222; border-radius: 4px; overflow: hidden; height: 22px;">
+            <div class="progress-bar-fill" id="progFill" style="width: 0%; height: 100%; background: #00ff9b; transition: width 0.3s;"></div>
         </div>
-        <p class="scan-note" id="progText">Look straight into the camera. Move your head slightly for best results.</p>
+        <p class="scan-note mt-2" id="progText" style="color: #00ff9b; font-weight: 500;">Ready to capture samples...</p>
     </div>
+    
     <div class="card">
         <h2>INSTRUCTIONS</h2>
         <p style="font-size:13px; color:#cfe9df; line-height:1.8;">
-            1. Make sure your face is well-lit and clearly visible.<br>
-            2. Stay within the camera frame.<br>
-            3. System will auto-capture {{ needed }} samples.<br>
+            1. Click <b>"Open Mobile Camera"</b> button.<br>
+            2. Take a photo of your face.<br>
+            3. Repeat until required samples ({{ needed }}) are collected.<br>
             4. Once done, click "Finish & Train Model" below.
         </p>
-        <button class="btn" id="trainBtn" style="display:none;" onclick="finishTraining()">✔ FINISH & TRAIN MODEL</button>
+        <button class="btn btn-success mt-3" id="trainBtn" style="display:none; width: 100%; padding: 12px;" onclick="finishTraining()">✔ FINISH & TRAIN MODEL</button>
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-// Safe passing for JS parser inside templates
 const employeeId = Number("{{ employee['id'] }}");
 const needed = Number("{{ needed }}");
 
-const interval = setInterval(() => {
-    fetch(`/capture_status/${employeeId}`)
-        .then(r => r.json())
-        .then(data => {
-            const pct = Math.min(100, (data.count / needed) * 100);
-            document.getElementById('progFill').style.width = pct + '%';
-            document.getElementById('progText').innerText = `Captured ${data.count} / ${needed} samples...`;
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const progFill = document.getElementById('progFill');
+const progText = document.getElementById('progText');
+const trainBtn = document.getElementById('trainBtn');
+
+// Try automatic live stream (works on HTTPS / localhost)
+navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
+    .then(stream => {
+        video.style.display = 'block';
+        document.getElementById('fallbackContainer').style.display = 'none';
+        video.srcObject = stream;
+        progText.innerText = "Live camera active. Look straight into the camera...";
+        startAutoCapturing();
+    })
+    .catch(err => {
+        console.log("Live stream restricted by HTTP. Fallback file-capture enabled.");
+        progText.innerText = "Use the 'Open Mobile Camera' button to capture photos.";
+    });
+
+function startAutoCapturing() {
+    const context = canvas.getContext('2d');
+    const interval = setInterval(() => {
+        if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
+
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        const dataURL = canvas.toDataURL('image/jpeg', 0.8);
+        sendFrameToServer(dataURL, () => {
+            if (window.captureDone) clearInterval(interval);
+        });
+    }, 600);
+}
+
+function handleImageUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            const dataURL = canvas.toDataURL('image/jpeg', 0.8);
+            
+            sendFrameToServer(dataURL);
+        }
+        img.src = e.target.result;
+    }
+    reader.readAsDataURL(file);
+}
+
+function sendFrameToServer(dataURL, callback) {
+    fetch(`/api/upload_capture_frame/${employeeId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: dataURL })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            const count = data.count;
+            const pct = Math.min(100, Math.round((count / needed) * 100));
+            progFill.style.width = pct + '%';
+            progText.innerText = `Captured ${count} / ${needed} samples...`;
 
             if (data.done) {
-                clearInterval(interval);
-                document.getElementById('progText').innerText = 'Capture complete! Ready to train.';
-                document.getElementById('trainBtn').style.display = 'inline-block';
+                window.captureDone = true;
+                if (video.srcObject) {
+                    video.srcObject.getTracks().forEach(track => track.stop());
+                }
+                progText.innerText = 'Capture complete! Ready to train model.';
+                trainBtn.style.display = 'block';
+                document.getElementById('fallbackContainer').style.display = 'none';
             }
-        });
-}, 800);
+        }
+        if (callback) callback();
+    })
+    .catch(err => console.error("Upload error:", err));
+}
 
 function finishTraining() {
-    document.getElementById('progText').innerText = 'Training model, please wait...';
+    progText.innerText = 'Training model, please wait...';
     fetch(`/train/${employeeId}`, { method: 'POST' })
         .then(() => window.location.href = "{{ url_for('employees') }}");
 }

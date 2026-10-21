@@ -1,6 +1,7 @@
 """
 app.py
-Flask-based Face Recognition Attendance System (Mobile & Desktop Support)
+Flask-based Face Recognition Attendance System (Desktop & Mobile Support)
+Admin login -> Register employees (capture face via webcam/mobile) -> Live attendance via face recognition
 """
 import os
 import time
@@ -25,13 +26,15 @@ ADMIN_PASSWORD = "muzammil182921"
 
 db.init_db()
 
-capture_progress = {}     
-last_marked = {}          
-camera = None             
-CAMERA_INDEX = 0          
+# ---------- Shared in-memory state ----------
+capture_progress = {}     # employee_id -> {"count": int, "done": bool}
+last_marked = {}          # employee_id -> timestamp (to avoid spamming DB checks every frame)
+camera = None             # single shared VideoCapture instance
+CAMERA_INDEX = 0          # change to 1 if your webcam is not the default device
 
 
 def _open_camera(index):
+    """Try the best backend for the current OS, with a plain fallback."""
     if platform.system() == "Windows":
         cam = cv2.VideoCapture(index, cv2.CAP_DSHOW)
         if not cam.isOpened():
@@ -47,6 +50,7 @@ def get_camera():
     if camera is None or not camera.isOpened():
         camera = _open_camera(CAMERA_INDEX)
         if camera.isOpened():
+            # warm-up: first few frames from a freshly opened camera are often empty/black
             for _ in range(5):
                 camera.read()
                 time.sleep(0.02)
@@ -59,6 +63,22 @@ def release_camera():
         camera.release()
         camera = None
 
+
+def error_frame_bytes(message):
+    """Build a single JPEG frame carrying an error message."""
+    img = np.zeros((480, 640, 3), dtype=np.uint8)
+    cv2.putText(img, "CAMERA ERROR", (150, 220), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2)
+    for i, line in enumerate(message.split("\n")):
+        cv2.putText(img, line, (60, 260 + i * 28), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 200, 255), 1)
+    ok, buf = cv2.imencode(".jpg", img)
+    return buf.tobytes()
+
+
+def mjpeg_wrap(frame_bytes):
+    return (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n")
+
+
+# ---------------- Auth ----------------
 
 def login_required(f):
     @wraps(f)
@@ -95,6 +115,8 @@ def logout():
     return redirect(url_for("login"))
 
 
+# ---------------- Dashboard ----------------
+
 @app.route("/dashboard")
 @login_required
 def dashboard():
@@ -116,9 +138,17 @@ def approve_employee(employee_id):
 @login_required
 def revoke_employee(employee_id):
     db.revoke_approval(employee_id)
-    flash("Approval revoked.", "success")
+    flash("Approval revoked — this employee will no longer be recognized until re-approved.", "success")
     return redirect(request.referrer or url_for("employees"))
 
+
+@app.route("/api/stats")
+@login_required
+def api_stats():
+    return jsonify(db.get_stats())
+
+
+# ---------------- Employees ----------------
 
 @app.route("/employees")
 @login_required
@@ -134,6 +164,8 @@ def delete_employee(employee_id):
     flash("Employee removed.", "success")
     return redirect(url_for("employees"))
 
+
+# ---------------- Registration & Capture ----------------
 
 @app.route("/register", methods=["GET", "POST"])
 @login_required
@@ -159,7 +191,8 @@ def add_department():
     name = request.form.get("dept_name", "").strip()
     if name:
         ok = db.add_department(name)
-        flash("Department added." if ok else "Department already exists.", "success" if ok else "error")
+        flash("Department added." if ok else "Department already exists.",
+              "success" if ok else "error")
     return redirect(url_for("register"))
 
 
@@ -172,7 +205,7 @@ def capture_page(employee_id):
     return render_template("capture.html", employee=employee, needed=fu.SAMPLES_NEEDED)
 
 
-# -------- Mobile Camera Frame Upload API --------
+# API for mobile/browser client-side camera capture uploading
 @app.route("/api/upload_capture_frame/<int:employee_id>", methods=["POST"])
 @login_required
 def upload_capture_frame(employee_id):
@@ -204,7 +237,7 @@ def upload_capture_frame(employee_id):
             if count >= fu.SAMPLES_NEEDED:
                 progress["done"] = True
                 db.update_samples_captured(employee_id, count)
-            break  
+            break  # one face per request
 
         return jsonify({
             "success": True,
@@ -229,11 +262,13 @@ def train(employee_id):
     ok, message = fu.train_model()
     if ok:
         db.mark_trained(employee_id)
-        flash(f"Face data trained! {message} Now waiting for admin approval.", "success")
+        flash(f"Face data trained! {message} Now waiting for admin approval on the Dashboard before this person can be recognized.", "success")
     else:
         flash(f"Training failed: {message}", "error")
     return redirect(url_for("employees"))
 
+
+# ---------------- Live Attendance ----------------
 
 @app.route("/attendance")
 @login_required
@@ -244,6 +279,7 @@ def attendance_page():
 @app.route("/api/recognize_frame", methods=["POST"])
 @login_required
 def recognize_frame():
+    """Receives base64 image frame from mobile/browser camera for live recognition & attendance."""
     data = request.get_json()
     if not data or "image" not in data:
         return jsonify({"success": False, "error": "No image provided"})
@@ -292,6 +328,34 @@ def recognize_frame():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 
+
+@app.route("/camera_check")
+@login_required
+def camera_check():
+    cam = get_camera()
+    result = {"camera_index": CAMERA_INDEX, "opened": cam.isOpened()}
+    if cam.isOpened():
+        success, frame = cam.read()
+        result["frame_read"] = bool(success)
+        result["frame_shape"] = list(frame.shape) if success else None
+    return jsonify(result)
+
+
+@app.route("/stop_camera", methods=["POST"])
+@login_required
+def stop_camera():
+    release_camera()
+    return jsonify({"status": "stopped"})
+
+
+@app.route("/api/live_logs")
+@login_required
+def api_live_logs():
+    logs = db.get_today_attendance()
+    return jsonify([dict(r) for r in logs])
+
+
+# ---------------- Reports ----------------
 
 @app.route("/reports")
 @login_required

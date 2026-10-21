@@ -5,8 +5,11 @@
 {% block content %}
 <div class="grid grid-2">
     <div>
-        <div class="video-wrap">
-            <img src="{{ url_for('video_feed') }}">
+        <div class="video-wrap" style="position: relative; display: inline-block; width: 100%;">
+            <!-- Hidden video to capture stream from mobile/browser camera -->
+            <video id="video" width="100%" autoplay playsinline style="display: none; border-radius: 8px;"></video>
+            <!-- Canvas to display processed frame with bounding boxes -->
+            <canvas id="canvas" style="width: 100%; border-radius: 8px; background: #000;"></canvas>
         </div>
         <p class="scan-note">Green box = recognized &nbsp;|&nbsp; Red box = unknown face. Attendance auto-marks once per day per person.</p>
     </div>
@@ -22,6 +25,71 @@
 
 {% block scripts %}
 <script>
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+// Access mobile/browser camera
+navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
+    .then(stream => {
+        video.srcObject = stream;
+        video.play();
+        requestAnimationFrame(processVideoFrame);
+    })
+    .catch(err => {
+        console.error("Camera access error:", err);
+        alert("Camera access denied or unavailable: " + err.message);
+    });
+
+function processVideoFrame() {
+    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        
+        // Draw video frame on canvas temporarily to get image data
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataURL = canvas.toDataURL('image/jpeg', 0.7);
+
+        // Send frame to backend for recognition
+        fetch('/api/recognize_frame', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image: dataURL })
+        })
+        .then(res => res.json())
+        .then(data => {
+            // Clear and redraw video frame
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            if (data.success && data.results) {
+                data.results.forEach(item => {
+                    const [x, y, w, h] = item.box;
+                    const color = item.recognized ? "#00ff9b" : "#ff3c00";
+                    
+                    // Draw bounding box
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 3;
+                    ctx.strokeRect(x, y, w, h);
+
+                    // Draw label background & text
+                    ctx.fillStyle = color;
+                    ctx.fillRect(x, y - 28, Math.max(w, 220), 28);
+                    ctx.fillStyle = "#000000";
+                    ctx.font = "bold 14px Arial";
+                    ctx.fillText(item.label, x + 6, y - 9);
+                });
+            }
+            refreshLogs();
+        })
+        .catch(err => console.error("Recognition error:", err));
+    }
+    
+    // Loop recognition every ~500ms to keep it smooth
+    setTimeout(() => {
+        requestAnimationFrame(processVideoFrame);
+    }, 500);
+}
+
 function refreshLogs() {
     fetch("{{ url_for('api_live_logs') }}")
         .then(r => r.json())
@@ -30,14 +98,16 @@ function refreshLogs() {
             body.innerHTML = '';
             if (logs.length === 0) {
                 body.innerHTML = '<tr><td colspan="3" style="color:var(--text-dim)">No scans yet today.</td></tr>';
+                return;
             }
             logs.forEach(log => {
                 const tr = document.createElement('tr');
-                tr.innerHTML = `<td>${log.name}</td><td><span class="badge">${log.department_name}</span></td><td>${log.time}</td>`;
+                tr.innerHTML = `<td>${log.name}</td><td><span class="badge">${log.department_name}</span></td><td>${log.time || log.timestamp || ''}</td>`;
                 body.appendChild(tr);
             });
         });
 }
+
 refreshLogs();
 setInterval(refreshLogs, 3000);
 </script>
